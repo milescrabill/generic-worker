@@ -16,8 +16,7 @@ and reports back results to the queue.
   Usage:
     generic-worker run                      [--config         CONFIG-FILE]
                                             [--configure-for-aws | --configure-for-gcp]
-    generic-worker install service          [--nssm           NSSM-EXE]
-                                            [--service-name   SERVICE-NAME]
+    generic-worker install service          [--service-name   SERVICE-NAME]
                                             [--config         CONFIG-FILE]
                                             [--configure-for-aws | --configure-for-gcp]
     generic-worker show-payload-schema
@@ -71,9 +70,6 @@ and reports back results to the queue.
     --configure-for-gcp                     This will create the CONFIG-FILE for a GCP
                                             installation by querying the GCP environment
                                             and setting appropriate values.
-    --nssm NSSM-EXE                         The full path to nssm.exe to use for installing
-                                            the service.
-                                            [default: C:\nssm-2.24\win64\nssm.exe]
     --service-name SERVICE-NAME             The name that the Windows service should be
                                             installed under. [default: Generic Worker]
     --file PRIVATE-KEY-FILE                 The path to the file to write the private key
