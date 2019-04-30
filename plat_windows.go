@@ -546,11 +546,9 @@ func SetAutoLogin(user *runtime.OSUser) error {
 	return nil
 }
 
-// deploys the generic worker as a windows service, running under the windows
-// user specified with username/password, such that the generic worker runs
-// with the given configuration file configFile. The serviceName is the
-// service name given to the newly created service. if the service already
-// exists, it is simply updated.
+// deploys the generic worker as a windows service named serviceName
+// running as the user LocalSystem
+// if the service already exists we remove and reinstall it.
 func deployService(configFile, serviceName, exePath, dir string, configureForAWS bool, configureForGCP bool) error {
 	targetScript := filepath.Join(filepath.Dir(exePath), "run-generic-worker.bat")
 	err := CreateRunGenericWorkerBatScript(targetScript, configureForAWS, configureForGCP)
@@ -565,17 +563,54 @@ func deployService(configFile, serviceName, exePath, dir string, configureForAWS
 	service, err := m.OpenService(serviceName)
 	if err == nil {
 		service.Close()
-		return fmt.Errorf("service %s already exists", name)
+		fmt.Printf("service %s already exists, deleting it", name)
+		err = deleteService(serviceName)
+		if err != nil {
+			return err
+		}
 	}
-	config = mgr.Config{
-		DisplayName: serviceName,
+	// can pass args as variadic
+	err = installService(serviceName, targetScript)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func deleteService(name) error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return err
+	}
+	defer m.Disconnect()
+	s, err := m.OpenService(name)
+	if err != nil {
+		return fmt.Errorf("service %s is not installed", name)
+	}
+	defer s.Close()
+	err = s.Delete()
+	if err != nil {
+		return err
+	}
+	err = eventlog.Remove(name)
+	if err != nil {
+		return fmt.Errorf("RemoveEventLogSource() failed: %s", err)
+	}
+	return nil
+}
+
+func installService(name, exePath string, args ...string) error {
+	config := mgr.Config{
+		DisplayName: name,
 		Description: "A taskcluster worker that runs on all mainstream platforms",
+		// run as LocalSystem because we call WTSQueryUserToken
+		ServiceStartName: "LocalSystem",
 		ServiceType: windows.SERVICE_WIN32_OWN_PROCESS,
 		StartType:   mgr.StartAutomatic,
 	}
-	service, err = m.CreateService(
-		serviceName,
-		targetScript,
+	service, err := m.CreateService(
+		name,
+		exePath,
 		config,
 	)
 	if err != nil {
@@ -584,7 +619,7 @@ func deployService(configFile, serviceName, exePath, dir string, configureForAWS
 	defer s.Close()
 	// log all events to logfile
 	err = eventlog.Install(
-		serviceName,
+		name,
 		filepath.Join(dir, "generic-worker-service.log"), 
 		false,
 		eventlog.Error|eventlog.Warning|eventlog.Info
@@ -594,36 +629,6 @@ func deployService(configFile, serviceName, exePath, dir string, configureForAWS
 		return fmt.Errorf("SetupEventLogSource() failed: %s", err)
 	}
 	return nil
-	// return runtime.RunCommands(
-	// 	false,
-	// 	[]string{nssm, "install", serviceName, targetScript},
-	// 	[]string{nssm, "set", serviceName, "AppDirectory", dir},
-	// 	// []string{nssm, "set", serviceName, "DisplayName", serviceName},
-	// 	[]string{nssm, "set", serviceName, "Description", "A taskcluster worker that runs on all mainstream platforms"},
-	// 	// []string{nssm, "set", serviceName, "Start", "SERVICE_AUTO_START"},
-	// 	// By default, NSSM installs as LocalSystem, which we need since we call WTSQueryUserToken.
-	// 	// So let's not set it.
-	// 	// []string{nssm, "set", serviceName, "ObjectName", ".\\" + user.Name, user.Password},
-	// 	// []string{nssm, "set", serviceName, "Type", "SERVICE_WIN32_OWN_PROCESS"},
-	// 	[]string{nssm, "set", serviceName, "AppPriority", "NORMAL_PRIORITY_CLASS"},
-	// 	[]string{nssm, "set", serviceName, "AppNoConsole", "1"},
-	// 	[]string{nssm, "set", serviceName, "AppAffinity", "All"},
-	// 	[]string{nssm, "set", serviceName, "AppStopMethodSkip", "0"},
-	// 	[]string{nssm, "set", serviceName, "AppStopMethodConsole", "1500"},
-	// 	[]string{nssm, "set", serviceName, "AppStopMethodWindow", "1500"},
-	// 	[]string{nssm, "set", serviceName, "AppStopMethodThreads", "1500"},
-	// 	[]string{nssm, "set", serviceName, "AppThrottle", "1500"},
-	// 	[]string{nssm, "set", serviceName, "AppExit", "Default", "Exit"},
-	// 	[]string{nssm, "set", serviceName, "AppRestartDelay", "0"},
-	// 	// []string{nssm, "set", serviceName, "AppStdout", filepath.Join(dir, "generic-worker-service.log")},
-	// 	// []string{nssm, "set", serviceName, "AppStderr", filepath.Join(dir, "generic-worker-service.log")},
-	// 	[]string{nssm, "set", serviceName, "AppStdoutCreationDisposition", "4"},
-	// 	[]string{nssm, "set", serviceName, "AppStderrCreationDisposition", "4"},
-	// 	[]string{nssm, "set", serviceName, "AppRotateFiles", "1"},
-	// 	[]string{nssm, "set", serviceName, "AppRotateOnline", "1"},
-	// 	[]string{nssm, "set", serviceName, "AppRotateSeconds", "3600"},
-	// 	[]string{nssm, "set", serviceName, "AppRotateBytes", "0"},
-	// )
 }
 
 func ExePath() (string, error) {
