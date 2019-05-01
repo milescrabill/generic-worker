@@ -560,24 +560,24 @@ func deployService(configFile, serviceName, exePath, dir string, configureForAWS
 		return err
 	}
 	defer m.Disconnect()
-	service, err := m.OpenService(serviceName)
+	s, err := m.OpenService(serviceName)
 	if err == nil {
-		service.Close()
-		fmt.Printf("service %s already exists, deleting it", name)
+		s.Close()
+		fmt.Printf("service %s already exists, deleting it", serviceName)
 		err = deleteService(serviceName)
 		if err != nil {
 			return err
 		}
 	}
 	// can pass args as variadic
-	err = installService(serviceName, targetScript)
+	err = installService(serviceName, targetScript, dir)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func deleteService(name) error {
+func deleteService(name string) error {
 	m, err := mgr.Connect()
 	if err != nil {
 		return err
@@ -599,16 +599,21 @@ func deleteService(name) error {
 	return nil
 }
 
-func installService(name, exePath string, args ...string) error {
+func installService(name, exePath, dir string, args ...string) error {
 	config := mgr.Config{
 		DisplayName: name,
 		Description: "A taskcluster worker that runs on all mainstream platforms",
 		// run as LocalSystem because we call WTSQueryUserToken
 		ServiceStartName: "LocalSystem",
-		ServiceType: windows.SERVICE_WIN32_OWN_PROCESS,
-		StartType:   mgr.StartAutomatic,
+		ServiceType:      windows.SERVICE_WIN32_OWN_PROCESS,
+		StartType:        mgr.StartAutomatic,
 	}
-	service, err := m.CreateService(
+	m, err := mgr.Connect()
+	if err != nil {
+		return err
+	}
+	defer m.Disconnect()
+	s, err := m.CreateService(
 		name,
 		exePath,
 		config,
@@ -620,9 +625,9 @@ func installService(name, exePath string, args ...string) error {
 	// log all events to logfile
 	err = eventlog.Install(
 		name,
-		filepath.Join(dir, "generic-worker-service.log"), 
+		filepath.Join(dir, "generic-worker-service.log"),
 		false,
-		eventlog.Error|eventlog.Warning|eventlog.Info
+		eventlog.Error|eventlog.Warning|eventlog.Info,
 	)
 	if err != nil {
 		s.Delete()
