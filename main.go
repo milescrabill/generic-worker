@@ -206,8 +206,7 @@ func main() {
 		// platform specific...
 		err := install(arguments)
 		if err != nil {
-			log.Println("Error installing generic worker:")
-			log.Printf("%#v\n", err)
+			log.Println("Error installing generic worker:", err)
 			os.Exit(int(CANT_INSTALL_GENERIC_WORKER))
 		}
 	case arguments["new-ed25519-keypair"]:
