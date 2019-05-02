@@ -493,8 +493,11 @@ func install(arguments map[string]interface{}) (err error) {
 	return nil
 }
 
-func CreateRunGenericWorkerBatScript(batScriptFilePath string, configureForAWS bool, configureForGCP bool) error {
+func CreateRunGenericWorkerBatScript(batScriptFilePath, configFile string, configureForAWS bool, configureForGCP bool) error {
 	runCommand := `.\generic-worker.exe run`
+	if configFile != "" {
+		runCommand += " --config " + configFile
+	}
 	if configureForAWS {
 		runCommand += ` --configure-for-aws`
 	}
@@ -548,10 +551,10 @@ func SetAutoLogin(user *runtime.OSUser) error {
 
 // deploys the generic worker as a windows service named serviceName
 // running as the user LocalSystem
-// if the service already exists we remove and reinstall it.
+// if the service already exists we skip.
 func deployService(configFile, serviceName, exePath, dir string, configureForAWS bool, configureForGCP bool) error {
 	targetScript := filepath.Join(filepath.Dir(exePath), "run-generic-worker.bat")
-	err := CreateRunGenericWorkerBatScript(targetScript, configureForAWS, configureForGCP)
+	err := CreateRunGenericWorkerBatScript(targetScript, configFile, configureForAWS, configureForGCP)
 	if err != nil {
 		return err
 	}
@@ -563,38 +566,12 @@ func deployService(configFile, serviceName, exePath, dir string, configureForAWS
 	s, err := m.OpenService(serviceName)
 	if err == nil {
 		s.Close()
-		fmt.Printf("service %s already exists, deleting it", serviceName)
-		err = deleteService(serviceName)
-		if err != nil {
-			return err
-		}
+		return fmt.Errorf("service %s already exists", serviceName)
 	}
 	// can pass args as variadic
 	err = installService(serviceName, targetScript, dir)
 	if err != nil {
 		return err
-	}
-	return nil
-}
-
-func deleteService(name string) error {
-	m, err := mgr.Connect()
-	if err != nil {
-		return err
-	}
-	defer m.Disconnect()
-	s, err := m.OpenService(name)
-	if err != nil {
-		return fmt.Errorf("service %s is not installed", name)
-	}
-	defer s.Close()
-	err = s.Delete()
-	if err != nil {
-		return err
-	}
-	err = eventlog.Remove(name)
-	if err != nil {
-		return fmt.Errorf("RemoveEventLogSource() failed: %s", err)
 	}
 	return nil
 }
