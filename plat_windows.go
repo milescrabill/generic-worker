@@ -21,11 +21,76 @@ import (
 	"github.com/taskcluster/generic-worker/win32"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
+	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/debug"
 	"golang.org/x/sys/windows/svc/eventlog"
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
 var sidsThatCanControlDesktopAndWindowsStation map[string]bool = map[string]bool{}
+
+var elog debug.Log
+
+type windowsService struct{}
+
+// implements Execute for svc.Handler
+func (*windowsService) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (bool, uint32) {
+	const cmdsAccepted = svc.AcceptStop | svc.AcceptShutdown
+	changes <- svc.Status{State: svc.StartPending}
+
+	// set up eventlog
+
+	changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
+
+	go func(r <-chan svc.ChangeRequest, changes chan<- svc.Status) {
+	loop:
+		for {
+			select {
+			case c := <-r:
+				switch c.Cmd {
+				case svc.Interrogate:
+					changes <- c.CurrentStatus
+					// Testing deadlock from https://code.google.com/p/winsvc/issues/detail?id=4
+					time.Sleep(100 * time.Millisecond)
+					changes <- c.CurrentStatus
+				case svc.Stop, svc.Shutdown:
+					elog.Info(1, fmt.Sprintf("received #%d, shutting down", c))
+					break loop
+				default:
+					elog.Error(1, fmt.Sprintf("unexpected control request #%d", c))
+				}
+			}
+		}
+		changes <- svc.Status{State: svc.StopPending}
+	}(r, changes)
+
+	return false, 0
+}
+
+func runService(name string, isDebug bool) {
+	var err error
+	if isDebug {
+		elog = debug.New(name)
+	} else {
+		elog, err = eventlog.Open(name)
+		if err != nil {
+			return
+		}
+	}
+	defer elog.Close()
+
+	elog.Info(1, fmt.Sprintf("starting %s service", name))
+	run := svc.Run
+	if isDebug {
+		run = debug.Run
+	}
+	err = run(name, &windowsService{})
+	if err != nil {
+		elog.Error(1, fmt.Sprintf("%s service failed: %v", name, err))
+		return
+	}
+	elog.Info(1, fmt.Sprintf("%s service stopped", name))
+}
 
 type PlatformData struct {
 	CommandAccessToken syscall.Token
