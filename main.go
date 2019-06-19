@@ -67,6 +67,7 @@ const (
 	TASKS_COMPLETE                           ExitCode = 0
 	CANT_LOAD_CONFIG                         ExitCode = 64
 	CANT_INSTALL_GENERIC_WORKER              ExitCode = 65
+	CANT_REMOVE_GENERIC_WORKER               ExitCode = 66
 	REBOOT_REQUIRED                          ExitCode = 67
 	IDLE_TIMEOUT                             ExitCode = 68
 	INTERNAL_ERROR                           ExitCode = 69
@@ -208,6 +209,12 @@ func main() {
 		if err != nil {
 			log.Println("Error installing generic worker:", err)
 			os.Exit(int(CANT_INSTALL_GENERIC_WORKER))
+		}
+	case arguments["remove"]:
+		err := remove(arguments)
+		if err != nil {
+			log.Println("Error removing generic worker:", err)
+			os.Exit(int(CANT_REMOVE_GENERIC_WORKER))
 		}
 	case arguments["new-ed25519-keypair"]:
 		err := generateEd25519Keypair(arguments["--file"].(string))

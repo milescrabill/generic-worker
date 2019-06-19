@@ -483,14 +483,13 @@ func install(arguments map[string]interface{}) (err error) {
 	configFile := convertNilToEmptyString(arguments["--config"])
 	switch {
 	case arguments["service"]:
-		serviceName := convertNilToEmptyString(arguments["--service-name"])
+		name := convertNilToEmptyString(arguments["--service-name"])
 		configureForAWS := arguments["--configure-for-aws"].(bool)
 		configureForGCP := arguments["--configure-for-gcp"].(bool)
 		dir := filepath.Dir(exePath)
-		return deployService(configFile, serviceName, exePath, dir, configureForAWS, configureForGCP)
+		return deployService(configFile, name, exePath, dir, configureForAWS, configureForGCP)
 	}
-	log.Fatal("Unknown install target - only 'service' is allowed")
-	return nil
+	return fmt.Errorf("Unknown install target - only 'service' is allowed")
 }
 
 func CreateRunGenericWorkerBatScript(batScriptFilePath, configFile string, configureForAWS bool, configureForGCP bool) error {
@@ -549,10 +548,10 @@ func SetAutoLogin(user *runtime.OSUser) error {
 	return nil
 }
 
-// deploys the generic worker as a windows service named serviceName
+// deploys the generic worker as a windows service named name
 // running as the user LocalSystem
 // if the service already exists we skip.
-func deployService(configFile, serviceName, exePath, dir string, configureForAWS bool, configureForGCP bool) error {
+func deployService(configFile, name, exePath, dir string, configureForAWS bool, configureForGCP bool) error {
 	targetScript := filepath.Join(filepath.Dir(exePath), "run-generic-worker.bat")
 	err := CreateRunGenericWorkerBatScript(targetScript, configFile, configureForAWS, configureForGCP)
 	if err != nil {
@@ -563,13 +562,13 @@ func deployService(configFile, serviceName, exePath, dir string, configureForAWS
 		return err
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(serviceName)
+	s, err := m.OpenService(name)
 	if err == nil {
 		s.Close()
-		return fmt.Errorf("service %s already exists", serviceName)
+		return fmt.Errorf("service %s already exists", name)
 	}
 	// can pass args as variadic
-	err = installService(serviceName, targetScript, dir)
+	err = installService(name, targetScript, dir)
 	if err != nil {
 		return err
 	}
@@ -609,6 +608,37 @@ func installService(name, exePath, dir string, args ...string) error {
 	if err != nil {
 		s.Delete()
 		return fmt.Errorf("SetupEventLogSource() failed: %s", err)
+	}
+	return nil
+}
+
+func remove(arguments map[string]interface{}) error {
+	switch {
+	case arguments["service"]:
+		name := convertNilToEmptyString(arguments["--service-name"])
+		return removeService(name)
+	}
+	return fmt.Errorf("Unknown remove target - only 'service' is allowed")
+}
+
+func removeService(name string) error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return err
+	}
+	defer m.Disconnect()
+	s, err := m.OpenService(name)
+	if err != nil {
+		return fmt.Errorf("service %s is not installed", name)
+	}
+	defer s.Close()
+	err = s.Delete()
+	if err != nil {
+		return err
+	}
+	err = eventlog.Remove(name)
+	if err != nil {
+		return fmt.Errorf("RemoveEventLogSource() failed: %s", err)
 	}
 	return nil
 }

@@ -92,6 +92,10 @@ func install(arguments map[string]interface{}) (err error) {
 	return nil
 }
 
+func remove(arguments map[string]interface{}) (err error) {
+	return nil
+}
+
 // Set an environment variable in each command.  This can be called from a feature's
 // NewTaskFeature method to set variables for the task.
 func (task *TaskRun) setVariable(variable string, value string) error {
