@@ -74,6 +74,9 @@ func TestInstallAndRemoveService(t *testing.T) {
 
 	cleanupService(t, name)
 
+	// hopefully service gets removed
+	<-time.After(2 * time.Second)
+
 	// verify service is removed
 	_, err = m.OpenService(name)
 	if err == nil {
@@ -95,7 +98,7 @@ func TestRunServiceWithoutEventlogSource(t *testing.T) {
 		t.Skipf("SKIP_ADMINISTRATOR_TESTS set, skipping %q", t.Name())
 	}
 
-	name := slugid.Nice()
+	name := "generic-worker-" + slugid.Nice()
 	setupService(t, name)
 
 	// remove eventlog source
@@ -131,7 +134,7 @@ func TestRunServiceWithBrokenWriter(t *testing.T) {
 		t.Skipf("SKIP_ADMINISTRATOR_TESTS set, skipping %q", t.Name())
 	}
 
-	name := slugid.Nice()
+	name := "generic-worker-" + slugid.Nice()
 	setupService(t, name)
 
 	// add brokenWriter
@@ -150,7 +153,7 @@ func TestRunServiceWithBrokenWriter(t *testing.T) {
 	cleanupService(t, name)
 }
 
-func TestSendWindowsServiceInteraction(t *testing.T) {
+func TestWindowsServiceInteraction(t *testing.T) {
 	defer setup(t)()
 
 	// Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (svcSpecificEC bool, exitCode uint32)
